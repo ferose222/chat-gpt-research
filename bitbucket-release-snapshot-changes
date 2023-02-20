@@ -1,0 +1,74 @@
+ferose222@gmail.com
++ source build-signature.sh
+bash: build-signature.sh: No such file or directory
+
+    - step:
+        name: Maven Build
+        script:
+          -  source build-signature.sh
+          - |
+            if [ "$IS_RELEASE_BUILD" == "TRUE" ]; then
+              echo "inside release build"
+              echo "version is $VERSION"
+              mvn versions:set -DnewVersion=${VERSION} -DgenerateBackupPoms=false;
+              mvn clean install -P release
+            else
+              echo "inside snapshot build"
+              echo "version is $VERSION"
+              mvn clean install
+            fi
+        artifacts:
+          - target/**/*
+          - build-signature.sh   
+          
+          
+==================================
+
+image: maven:3.8.3-jdk-11
+pipelines:
+  default:
+    - step:
+        name: Build and Deploy
+        script:
+          - MVN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout);
+            echo "$MVN_VERSION";
+          - if [ $IS_RELEASE_BUILD == "TRUE" ]; then
+              VERSION_NO_SNAPSHOT="${MVN_VERSION%-SNAPSHOT}-$BITBUCKET_BUILD_NUMBER";
+              echo $VERSION_NO_SNAPSHOT;
+              mvn versions:set -DnewVersion=${VERSION_NO_SNAPSHOT} -DgenerateBackupPoms=false;
+              mvn clean install -P release;
+            else
+              if [ -n "$UPDATE_SNAPSHOT_VERSION" ]; then
+                mvn versions:set -DnewVersion="$UPDATE_SNAPSHOT_VERSION" -DgenerateBackupPoms=false;
+                git config --global user.email "email here|";
+                git config --global user.name "user_name
+                git add .;
+                git commit -m "Update version to $UPDATE_SNAPSHOT_VERSION";
+                git push;                
+              else
+                echo "the version is ${MVN_VERSION%-SNAPSHOT}";
+                mvn clean install;
+              fi;
+            fi;
+        artifacts:
+          - target/**/*
+          
+ =====
+ image: maven:3.8.3-jdk-11
+
+pipelines:
+  branches:
+    master:
+      - step:
+          name: Build and Deploy
+          script:
+            - mvn clean package
+            - export VERSION=${BITBUCKET_TAG}
+            - if [[ ${VERSION} == release-* ]]; then mvn versions:set -DnewVersion=${VERSION#release-} -DgenerateBackupPoms=false; else mvn versions:set -DnewVersion=${VERSION#snapshot-}-SNAPSHOT -DgenerateBackupPoms=false; fi
+            - mvn deploy
+
+definitions:
+  caches:
+    maven: ~/.m2/repository
+
+ 
